@@ -5,38 +5,17 @@ from .config import settings
 from .routers import auth, courses, progress, payments, certificates, notifications, users, favorites
 from .models import User, Course, Lesson
 from .security import get_password_hash
+import asyncio
+from contextlib import asynccontextmanager
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Astro Lab API", version="1.0.0")
+# Background task for seeding
+_seed_task = None
 
-# CORS middleware for development
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routers under /api prefix
-app.include_router(auth.router, prefix="/api")
-app.include_router(courses.router, prefix="/api")
-app.include_router(progress.router, prefix="/api")
-app.include_router(payments.router, prefix="/api")
-app.include_router(certificates.router, prefix="/api")
-app.include_router(notifications.router, prefix="/api")
-app.include_router(users.router, prefix="/api")
-app.include_router(favorites.router, prefix="/api")
-
-@app.get("/")
-def home():
-    return {"status": "Astro Lab API is running"}
-
-# Seed DB on startup if empty
-@app.on_event("startup")
-def seed_database():
+def _seed_database_sync():
+    """Synchronous database seeding function that runs in background"""
     db = SessionLocal()
     try:
         # Check if users already exist
@@ -164,6 +143,53 @@ def seed_database():
             db.add_all([l1, l2, l3, l4])
             db.commit()
             print("Database seeded successfully!")
+        else:
+            print(f"Database already has {user_count} users, skipping seed.")
             
+    except Exception as e:
+        print(f"Error during database seeding: {e}")
     finally:
         db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager - startup and shutdown logic"""
+    # Startup: Start seeding in background (non-blocking)
+    loop = asyncio.get_event_loop()
+    global _seed_task
+    _seed_task = loop.run_in_executor(None, _seed_database_sync)
+    print("Background database seeding started (non-blocking)")
+    
+    yield
+    
+    # Shutdown: Cancel seeding task if still running
+    if _seed_task and not _seed_task.done():
+        _seed_task.cancel()
+
+
+app = FastAPI(title="Astro Lab API", version="1.0.0", lifespan=lifespan)
+
+# CORS middleware for development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers under /api prefix
+app.include_router(auth.router, prefix="/api")
+app.include_router(courses.router, prefix="/api")
+app.include_router(progress.router, prefix="/api")
+app.include_router(payments.router, prefix="/api")
+app.include_router(certificates.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+app.include_router(favorites.router, prefix="/api")
+
+@app.get("/")
+def home():
+    return {"status": "Astro Lab API is running"}
+
