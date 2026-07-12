@@ -57,6 +57,10 @@ app.include_router(enterprise.router, prefix="/api")
 def home():
     return {"status": "Astro Lab API is running"}
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
 # Seed DB on startup if empty
 @app.on_event("startup")
 def seed_database():
