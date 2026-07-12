@@ -5,7 +5,7 @@ from ..database import get_db
 from ..models import User
 from ..security import verify_access_token
 from ..services import authenticate_user, create_user, build_token, serialize_user, get_user_by_email
-from ..schemas import UserLogin
+from ..schemas import UserLogin, LoginPayload, RegisterPayload
 from ..config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -43,16 +43,44 @@ def check_session(request: Request, db: Session = Depends(get_db)):
     return {"user": serialize_user(user)}
 
 
+@router.post("/login")
+def login_endpoint(payload: LoginPayload, response: Response, db: Session = Depends(get_db)):
+    user = authenticate_user(db, payload.email, payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    token = build_token(user)
+    _set_auth_cookie(response, token)
+    return {"user": serialize_user(user)}
+
+
+@router.post("/register")
+def register_endpoint(payload: RegisterPayload, response: Response, db: Session = Depends(get_db)):
+    if get_user_by_email(db, payload.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Allows role to be specified (e.g. USER, CUSTOMER, STUDENT)
+    user = create_user(db, name=payload.name, email=payload.email, password=payload.password, role=payload.role.upper() if payload.role else "USER")
+    token = build_token(user)
+    _set_auth_cookie(response, token)
+    return {"user": serialize_user(user)}
+
+
+@router.post("/logout")
+def logout_endpoint(response: Response):
+    response.delete_cookie(key=settings.session_cookie_name, path="/")
+    return {"success": True}
+
+
 @router.post("")
-def auth_action(payload: UserLogin, response: Response, request: Request, db: Session = Depends(get_db)):
+def auth_action_legacy(payload: UserLogin, response: Response, request: Request, db: Session = Depends(get_db)):
+    # Legacy fallback endpoint
     if payload.action == "login":
         if not payload.email or not payload.password:
             raise HTTPException(status_code=400, detail="Email and password are required")
-
         user = authenticate_user(db, payload.email, payload.password)
         if not user:
             raise HTTPException(status_code=401, detail="Invalid email or password")
-
         token = build_token(user)
         _set_auth_cookie(response, token)
         return {"user": serialize_user(user)}
@@ -60,11 +88,10 @@ def auth_action(payload: UserLogin, response: Response, request: Request, db: Se
     elif payload.action == "register":
         if not payload.email or not payload.password or not payload.name:
             raise HTTPException(status_code=400, detail="Name, email, and password are required")
-
         if get_user_by_email(db, payload.email):
             raise HTTPException(status_code=400, detail="Email already registered")
-
-        user = create_user(db, name=payload.name, email=payload.email, password=payload.password)
+        role_to_use = payload.role.upper() if getattr(payload, "role", None) else "STUDENT"
+        user = create_user(db, name=payload.name, email=payload.email, password=payload.password, role=role_to_use)
         token = build_token(user)
         _set_auth_cookie(response, token)
         return {"user": serialize_user(user)}
@@ -72,6 +99,5 @@ def auth_action(payload: UserLogin, response: Response, request: Request, db: Se
     elif payload.action == "logout":
         response.delete_cookie(key=settings.session_cookie_name, path="/")
         return {"success": True}
-
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
