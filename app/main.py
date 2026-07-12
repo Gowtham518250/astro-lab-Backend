@@ -18,11 +18,20 @@ os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # CORS middleware for local development and deployed frontends
-configured_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+configured_origins = os.getenv("CORS_ORIGINS", "").split(",")
 allow_origins = [origin.strip() for origin in configured_origins if origin.strip()]
+if not allow_origins:
+    allow_origins = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
+    ]
 allow_origin_regex = os.getenv(
     "CORS_ORIGIN_REGEX",
-    r"https://.*\\.vercel\\.app|https://.*\\.netlify\\.app|https://.*\\.github\\.dev"
+    r"https?://.*"
 )
 
 app.add_middleware(
