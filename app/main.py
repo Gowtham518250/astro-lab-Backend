@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .database import engine, Base, SessionLocal
 from .config import settings
 from .routers import auth, courses, progress, payments, certificates, notifications, users, favorites, quiz, lessons, categories, instructors, reviews, coupons, payment_provider, platform, enterprise
@@ -11,6 +12,10 @@ from .security import get_password_hash
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Astro Lab API", version="1.0.0")
+
+# Mount static files for uploads
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # CORS middleware for local development and deployed frontends
 configured_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
