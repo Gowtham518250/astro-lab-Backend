@@ -64,10 +64,12 @@ def health_check():
 # Seed DB on startup if empty
 @app.on_event("startup")
 def seed_database():
+    print("Starting up...")
     db = SessionLocal()
     try:
         # Check if users already exist
         user_count = db.query(User).count()
+        print(f"User count in DB: {user_count}")
         if user_count == 0:
             print("Seeding database...")
             # Create users
@@ -218,6 +220,8 @@ def seed_database():
             db.commit()
 
             print("Database seeded successfully!")
-            
+    except Exception as e:
+        print(f"Error during database seeding: {e}")
     finally:
         db.close()
+    print("Startup complete!")
